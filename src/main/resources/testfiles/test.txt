@@ -1,0 +1,5 @@
+This is a LocalRag test file.
+
+Token bucket rate limiting: maintain tokens, refill over time, consume per request.
+
+Lucene BM25 will match keyword queries like "token bucket".
