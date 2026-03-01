@@ -1,5 +1,6 @@
 package io.github.kaiq22unc.localrag.cli;
 
+import io.github.kaiq22unc.localrag.core.searcher.Searcher;
 import picocli.CommandLine;
 
 import java.nio.file.Path;
@@ -34,6 +35,12 @@ public class QueryCommand implements Callable<Integer> {
 
     @Override
     public Integer call() {
+        var searcher = new Searcher();
+        try {
+            searcher.search(indexDir, queryText, topK);
+        } catch (Exception e) {
+            System.err.println(e.getMessage());
+        }
         System.out.println("query called (stub)");
         System.out.println("indexDir=" + indexDir);
         System.out.println("topK=" + topK);

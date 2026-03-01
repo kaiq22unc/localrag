@@ -1,6 +1,8 @@
 package io.github.kaiq22unc.localrag.cli;
 
+import io.github.kaiq22unc.localrag.core.indexer.Chunker;
 import io.github.kaiq22unc.localrag.core.indexer.FileScanner;
+import io.github.kaiq22unc.localrag.core.indexer.LuceneChunkIndex;
 import io.github.kaiq22unc.localrag.core.indexer.UTF8TextReader;
 import picocli.CommandLine;
 
@@ -44,8 +46,26 @@ public class IndexCommand implements Callable<Integer> {
     )
     List<Path> inputs;
 
+    @CommandLine.Option(
+            names = "--chunk-lines",
+            defaultValue = "40",
+            description = "Max number of lines per chunk"
+    )
+    int chunkLines;
+
+    @CommandLine.Option(
+            names = "--overlap-lines",
+            defaultValue = "5",
+            description = "Number of overlapping lines between adjacent chunks (must be < chunk-lines)"
+    )
+    int overlapLines;
+
     @Override
     public Integer call() throws IOException {
+        if (chunkLines <= 0) throw new IllegalArgumentException("--chunk-lines must be > 0");
+        if (overlapLines < 0 || overlapLines >= chunkLines)
+            throw new IllegalArgumentException("--overlap-lines must be >= 0 and < --chunk-lines");
+
         var exts = java.util.Arrays.stream(extCsv.split(","))
                 .map(s -> s.trim().toLowerCase(java.util.Locale.ROOT))
                 .filter(s -> !s.isEmpty())
@@ -58,10 +78,27 @@ public class IndexCommand implements Callable<Integer> {
 
         int readOk = 0;
         int readSkipped = 0;
+        int totalChunks = 0;
 
-        for (var f : scan.files) {
-            if (reader.read(f) != null) readOk++;
-            else readSkipped++;
+        try (var lucene = new LuceneChunkIndex(indexDir, true)) {
+            for (var f : scan.files) {
+                var readResult = reader.read(f);
+                if (readResult == null) {
+                    readSkipped++;
+                    continue;
+                }
+                readOk++;
+                var chunks = Chunker.chunkByLines(readResult.contents, chunkLines, overlapLines);
+                var pathStr = readResult.path.toAbsolutePath().normalize().toString();
+                System.out.printf("%s -> %d chunks%n", pathStr, chunks.size());
+
+                for (var chunk : chunks) {
+                    lucene.upsertChunk(pathStr, chunk.chunkId(), chunk.startLine(), chunk.endLine(), readResult.modifiedMillis, chunk.text());
+                    totalChunks++;
+                }
+            }
+            lucene.commit();
+            System.out.println("totalChunksIndexed=" + totalChunks);
         }
 
         System.out.println("=== Scan summary ===");
@@ -74,7 +111,7 @@ public class IndexCommand implements Callable<Integer> {
         System.out.println("=== Read summary (UTF-8 only) ===");
         System.out.println("readOk=" + readOk);
         System.out.println("readSkipped=" + readSkipped);
-//        System.out.println(reader.read(scan.files.get(0)).contents);
+//        System.out.println(Chunker.chunkByLines(reader.read(scan.files.get(0)).contents, chunkLines, overlapLines));
 
         return 0;
     }
