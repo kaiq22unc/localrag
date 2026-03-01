@@ -58,6 +58,10 @@ public final class LuceneChunkIndex implements AutoCloseable {
         writer.updateDocument(new Term("docId", docId), doc);
     }
 
+    public void deleteByPath(String path) throws IOException {
+        writer.deleteDocuments(new Term("path", path));
+    }
+
     public void commit() throws IOException {
         writer.commit();
     }

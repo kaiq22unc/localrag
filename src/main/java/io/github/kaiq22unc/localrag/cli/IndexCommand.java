@@ -1,9 +1,6 @@
 package io.github.kaiq22unc.localrag.cli;
 
-import io.github.kaiq22unc.localrag.core.indexer.Chunker;
-import io.github.kaiq22unc.localrag.core.indexer.FileScanner;
-import io.github.kaiq22unc.localrag.core.indexer.LuceneChunkIndex;
-import io.github.kaiq22unc.localrag.core.indexer.UTF8TextReader;
+import io.github.kaiq22unc.localrag.core.indexer.*;
 import picocli.CommandLine;
 
 import java.io.IOException;
@@ -74,32 +71,7 @@ public class IndexCommand implements Callable<Integer> {
         var scanner = new FileScanner();
         var scan = scanner.scan(inputs, exts, maxBytes);
 
-        var reader = new UTF8TextReader();
-
-        int readOk = 0;
-        int readSkipped = 0;
-        int totalChunks = 0;
-
-        try (var lucene = new LuceneChunkIndex(indexDir, true)) {
-            for (var f : scan.files) {
-                var readResult = reader.read(f);
-                if (readResult == null) {
-                    readSkipped++;
-                    continue;
-                }
-                readOk++;
-                var chunks = Chunker.chunkByLines(readResult.contents, chunkLines, overlapLines);
-                var pathStr = readResult.path.toAbsolutePath().normalize().toString();
-                System.out.printf("%s -> %d chunks%n", pathStr, chunks.size());
-
-                for (var chunk : chunks) {
-                    lucene.upsertChunk(pathStr, chunk.chunkId(), chunk.startLine(), chunk.endLine(), readResult.modifiedMillis, chunk.text());
-                    totalChunks++;
-                }
-            }
-            lucene.commit();
-            System.out.println("totalChunksIndexed=" + totalChunks);
-        }
+        Indexer.index(indexDir, scan, chunkLines, overlapLines);
 
         System.out.println("=== Scan summary ===");
         System.out.println("discovered=" + scan.discovered);
@@ -107,10 +79,6 @@ public class IndexCommand implements Callable<Integer> {
         System.out.println("skippedByExt=" + scan.skippedByExt);
         System.out.println("skippedTooLarge=" + scan.skippedTooLarge);
         System.out.println("skippedNotRegular=" + scan.skippedNotRegular);
-
-        System.out.println("=== Read summary (UTF-8 only) ===");
-        System.out.println("readOk=" + readOk);
-        System.out.println("readSkipped=" + readSkipped);
 //        System.out.println(Chunker.chunkByLines(reader.read(scan.files.get(0)).contents, chunkLines, overlapLines));
 
         return 0;
