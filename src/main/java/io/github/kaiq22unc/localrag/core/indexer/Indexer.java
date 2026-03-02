@@ -1,7 +1,6 @@
 package io.github.kaiq22unc.localrag.core.indexer;
 
 import io.github.kaiq22unc.localrag.core.util.ManifestStore;
-import org.apache.lucene.index.IndexReader;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -15,11 +14,10 @@ public class Indexer {
 
     public static void index(Path indexDir, FileScanner.ScanResult scan, int chunkLines, int overlapLines) throws IOException {
         int totalChunks = 0;
-        var reader = new UTF8TextReader();
         int readSkipped = 0;
         int readOk = 0;
 
-        Path manifestPath = indexDir.getParent().resolve("manifest.tsv"); // .localrag/manifest.tsv if indexDir=.localrag/index
+        Path manifestPath = indexDir.resolve("manifest.tsv"); // .localrag/manifest.tsv if indexDir=.localrag/
         ManifestStore manifestStore = new ManifestStore();
         Map<String, Long> oldManifest = manifestStore.load(manifestPath);
         Map<String, Long> newManifest = new HashMap<>();
@@ -28,7 +26,7 @@ public class Indexer {
         int deletedMissing = 0;
 
         try (var lucene = new LuceneChunkIndex(indexDir, false)) {
-            for (var f : scan.files) {
+            for (var f: scan.files) {
                 String pathStr = f.toAbsolutePath().normalize().toString();
                 long modified = Files.getLastModifiedTime(f).toMillis();
 
@@ -40,21 +38,28 @@ public class Indexer {
                     continue;
                 }
 
-                var readResult = reader.read(f);
-                if (readResult == null) {
-                    readSkipped++;
-                    continue;
-                }
+//                var readResult = reader.read(f);
+//                if (readResult == null) {
+//                    readSkipped++;
+//                    continue;
+//                }
                 readOk++;
 
                 lucene.deleteByPath(pathStr);
-                var chunks = Chunker.chunkByLines(readResult.contents, chunkLines, overlapLines);
-                System.out.printf("%s -> %d chunks%n", pathStr, chunks.size());
+//                var chunks = Chunker.chunkByLines(readResult.contents, chunkLines, overlapLines);
+//                System.out.printf("%s -> %d chunks%n", pathStr, chunks.size());
+//
+//                for (var chunk : chunks) {
+//                    lucene.upsertChunk(pathStr, chunk.chunkId(), chunk.startLine(), chunk.endLine(), readResult.modifiedMillis, chunk.text());
+//                    totalChunks++;
+//                }
 
-                for (var chunk : chunks) {
-                    lucene.upsertChunk(pathStr, chunk.chunkId(), chunk.startLine(), chunk.endLine(), readResult.modifiedMillis, chunk.text());
-                    totalChunks++;
-                }
+                int produced = StreamingChunker.chunkFileByLines(f, chunkLines, overlapLines,
+                        (chunkId, startLine, endLine, text) -> {
+                            lucene.upsertChunk(pathStr, chunkId, startLine, endLine, modified, text);
+                        });
+
+                totalChunks += produced;
 
                 newManifest.put(pathStr, modified);
             }
